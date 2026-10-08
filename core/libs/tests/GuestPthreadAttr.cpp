@@ -20,6 +20,8 @@ int APS5_VABI scePthreadAttrGetaffinity(const PthreadAttr* attr, KernelCpumask* 
 int APS5_VABI scePthreadAttrGetstacksize(const PthreadAttr* attr, std::size_t* stackSize);
 int APS5_VABI scePthreadAttrGetdetachstate(const PthreadAttr* attr, int* state);
 int APS5_VABI pthread_attr_setstacksize_nid_postfix(PthreadAttr* attr, std::size_t stackSize);
+int APS5_VABI scePthreadAttrGetsolosched(const PthreadAttr* attr, int* solosched);
+int APS5_VABI pthread_attr_setsolosched_np_nid_postfix(PthreadAttr* attr, int solosched);
 }
 
 static constexpr int SCE_OK = 0;
@@ -81,8 +83,23 @@ static void* APS5_VABI Worker(void* arg) {
     return nullptr;
 }
 
+static void CheckSolosched() {
+    PthreadAttr attr = nullptr;
+    Require(scePthreadAttrInit(&attr) == SCE_OK);
+    int solosched = -1;
+    Require(scePthreadAttrGetsolosched(&attr, &solosched) == SCE_OK && solosched == 0);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 1) == 0);
+    Require(scePthreadAttrGetsolosched(&attr, &solosched) == SCE_OK && solosched == 1);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 0) == 0);
+    Require(scePthreadAttrGetsolosched(&attr, &solosched) == SCE_OK && solosched == 0);
+    Require(pthread_attr_setsolosched_np_nid_postfix(nullptr, 1) == GUEST_EINVAL);
+    Require(scePthreadAttrDestroy(&attr) == SCE_OK);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 1) == GUEST_EINVAL);
+}
+
 int main() {
     CheckStackSizeLimit();
+    CheckSolosched();
     PthreadAttr attr = nullptr;
     Require(scePthreadAttrInit(&attr) == SCE_OK);
     Require(scePthreadAttrSetinheritsched(&attr, EXPLICIT_SCHED) == SCE_OK);
