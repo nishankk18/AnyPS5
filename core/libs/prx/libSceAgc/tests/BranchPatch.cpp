@@ -13,6 +13,8 @@ std::uint32_t APS5_VABI sceAgcCbBranchGetSize();
 int APS5_VABI sceAgcBranchPatchSetCompareAddress(std::uint32_t*, const volatile std::uint64_t*);
 int APS5_VABI sceAgcBranchPatchSetThenTarget(std::uint32_t*, const volatile std::uint32_t*, std::uint32_t);
 int APS5_VABI sceAgcBranchPatchSetElseTarget(std::uint32_t*, const volatile std::uint32_t*, std::uint32_t);
+int APS5_VABI sceAgcBranchPatchSetThenTarget_0300(std::uint32_t*, std::uint32_t, const volatile std::uint32_t*, std::uint32_t);
+int APS5_VABI sceAgcBranchPatchSetElseTarget_0300(std::uint32_t*, std::uint32_t, const volatile std::uint32_t*, std::uint32_t);
 }
 
 namespace {
@@ -107,6 +109,26 @@ void testTarget(TSetter setter, std::size_t field, std::uint32_t cachePolicyBits
     check(storage.words == expected, name);
 }
 
+template <typename TSetter>
+void testCachePolicyTarget(TSetter setter, std::size_t field, const char* name) {
+    const auto withPolicy = [&](std::uint32_t policy) {
+        return [&, policy](std::uint32_t* cmd, const volatile std::uint32_t* target, std::uint32_t size) { return setter(cmd, policy, target, size); };
+    };
+    testTarget(withPolicy(0), field, 0u, name);
+    testTarget(withPolicy(1), field, 0x10000000u, name);
+    testTarget(withPolicy(3), field, 0x30000000u, name);
+    Storage storage;
+    auto expected = storage.words;
+    expected[field] = 0x2000u;
+    expected[field + 1] = 0;
+    expected[field + 2] = 0x20000000u | 0x40u;
+    check(setter(storage.packet, 2, targetAt(0x2000u), 0x40u) == 0, name);
+    check(storage.words == expected, name);
+    expectFailure([&] { setter(storage.packet, 4, targetAt(0x3000u), 1); });
+    expectFailure([&] { setter(storage.packet, 0xffffffffu, targetAt(0x3000u), 1); });
+    check(storage.words == expected, name);
+}
+
 void testMalformedPackets() {
     for (const auto header : {0xc0023f00u, 0xc00b3f00u, 0xc00c3f01u, 0xc00c2200u}) {
         Storage storage;
@@ -115,6 +137,8 @@ void testMalformedPackets() {
         expectFailure([&] { sceAgcBranchPatchSetCompareAddress(storage.packet, compareAt(0x1000u)); });
         expectFailure([&] { sceAgcBranchPatchSetThenTarget(storage.packet, targetAt(0x2000u), 1); });
         expectFailure([&] { sceAgcBranchPatchSetElseTarget(storage.packet, targetAt(0x2000u), 1); });
+        expectFailure([&] { sceAgcBranchPatchSetThenTarget_0300(storage.packet, 1, targetAt(0x2000u), 1); });
+        expectFailure([&] { sceAgcBranchPatchSetElseTarget_0300(storage.packet, 1, targetAt(0x2000u), 1); });
         check(storage.words == malformed, "setter modified a packet that is not a branch");
     }
 }
@@ -128,6 +152,8 @@ int main() {
         testCompareAddress();
         testTarget(sceAgcBranchPatchSetThenTarget, 8, 0x10000000u, "then target setter wrote the wrong words");
         testTarget(sceAgcBranchPatchSetElseTarget, 11, 0x20000000u, "else target setter wrote the wrong words");
+        testCachePolicyTarget(sceAgcBranchPatchSetThenTarget_0300, 8, "then target and cache policy setter wrote the wrong words");
+        testCachePolicyTarget(sceAgcBranchPatchSetElseTarget_0300, 11, "else target and cache policy setter wrote the wrong words");
         testMalformedPackets();
         std::puts("AGC branch patch tests passed");
         return 0;
