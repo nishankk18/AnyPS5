@@ -27,6 +27,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Formatting.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FormattingWide.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RuntimeSupport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Threads.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LocaleSupport.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Process.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Environment.cpp
@@ -249,6 +250,15 @@ if(BUILD_TESTING)
     add_test(NAME guest_formatting COMMAND guest_formatting_tests)
     if(WIN32)
         set_tests_properties(guest_formatting PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+    add_test_executable(guest_mutex_condition_tests ${LIBS_INCLUDE_DIR}/tests/GuestMutexCondition.cpp)
+    target_include_directories(guest_mutex_condition_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_mutex_condition_tests PRIVATE libc)
+    configure_windows_unwind(guest_mutex_condition_tests)
+    add_test(NAME guest_mutex_condition COMMAND guest_mutex_condition_tests)
+    if(WIN32)
+        set_tests_properties(guest_mutex_condition PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
     add_test_executable(guest_search_tests ${LIBS_INCLUDE_DIR}/tests/GuestSearch.cpp)

@@ -15,8 +15,9 @@
 #include "prx/libc/include/FileStream.hpp"
 #include "prx/libc/include/ApplicationHeap.hpp"
 
-#ifdef _WIN32
 #include "prx/libc/include/WindowsFormatting.hpp"
+
+#ifdef _WIN32
 #include "prx/libc/include/WindowsScanning.hpp"
 #include "prx/libc/include/WindowsWideFormatting.hpp"
 #endif
@@ -393,6 +394,25 @@ int APS5_VABI vsnprintf_nid_postfix(char* str, size_t size, const char* format, 
     va_end(copy);
     return result;
 #endif
+}
+
+int APS5_VABI vsnprintf_s_nid_postfix(char* buffer, size_t size, const char* format, VaList* args) {
+    constexpr size_t RsizeMax = SIZE_MAX >> 1;
+    if (buffer != nullptr && format != nullptr && size != 0 && size <= RsizeMax) {
+        try {
+            return LibcDetail::FormatWindows(buffer, size, format, args, nullptr, true);
+        } catch (const LibcDetail::RuntimeConstraintViolation&) {
+        }
+    }
+    if (buffer != nullptr && size != 0 && size < RsizeMax) buffer[0] = '\0';
+    return -1;
+}
+
+int APS5_VABI vsscanf_s_nid_postfix(const char* input, const char* format, VaList* args) {
+    if (input == nullptr || format == nullptr) return EOF;
+    if (args == nullptr) throw std::invalid_argument("vsscanf_s: null argument list");
+    LibcDetail::FormatArguments arguments(args);
+    return ScanGuest(input, format, true, [&] { return arguments.Next<void*>(); }, [&] { return arguments.Next<unsigned int>(); });
 }
 
 #ifdef _WIN32

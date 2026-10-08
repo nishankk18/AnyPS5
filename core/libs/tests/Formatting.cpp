@@ -1,4 +1,5 @@
 #include "SceTypes.hpp"
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <cstdio>
@@ -11,6 +12,8 @@ int APS5_VABI libc_printf_nid_postfix(const char*, ...);
 int APS5_VABI sscanf_nid_postfix(const char*, const char*, ...);
 int APS5_VABI vsnprintf_nid_postfix(char*, size_t, const char*, VaList*);
 int APS5_VABI vprintf_nid_postfix(const char*, VaList*);
+int APS5_VABI vsnprintf_s_nid_postfix(char*, size_t, const char*, VaList*);
+int APS5_VABI vsscanf_s_nid_postfix(const char*, const char*, VaList*);
 }
 
 static void Require(bool condition) {
@@ -37,6 +40,60 @@ static int APS5_VABI PrintList(const char* format, ...) {
     const int result = vprintf_nid_postfix(format, &list);
     __builtin_sysv_va_end(args);
     return result;
+}
+
+static int APS5_VABI FormatSecure(char* buffer, size_t size, const char* format, ...) {
+    __builtin_sysv_va_list args;
+    __builtin_sysv_va_start(args, format);
+    VaList list;
+    std::memcpy(&list, args, sizeof(list));
+    const VaList original = list;
+    const int result = vsnprintf_s_nid_postfix(buffer, size, format, &list);
+    Require(std::memcmp(&list, &original, sizeof(list)) == 0);
+    __builtin_sysv_va_end(args);
+    return result;
+}
+
+static int APS5_VABI ScanSecure(const char* input, const char* format, ...) {
+    __builtin_sysv_va_list args;
+    __builtin_sysv_va_start(args, format);
+    VaList list;
+    std::memcpy(&list, args, sizeof(list));
+    const VaList original = list;
+    const int result = vsscanf_s_nid_postfix(input, format, &list);
+    Require(std::memcmp(&list, &original, sizeof(list)) == 0);
+    __builtin_sysv_va_end(args);
+    return result;
+}
+
+static void CheckBoundsChecked() {
+    char buffer[16];
+    Require(FormatSecure(buffer, sizeof(buffer), "%d-%s-%.1f", 7, "x", 2.5) == 7 && std::strcmp(buffer, "7-x-2.5") == 0);
+    Require(FormatSecure(buffer, sizeof(buffer), "%d %d %d %d %d %d %.3Lf", 1, 2, 3, 4, 5, 6, 1.125L) == 17);
+    Require(std::strcmp(buffer, "1 2 3 4 5 6 1.1") == 0);
+    buffer[5] = '!';
+    Require(FormatSecure(buffer, 5, "%s", "abcdef") == 6 && std::strcmp(buffer, "abcd") == 0 && buffer[5] == '!');
+    int count = -1;
+    buffer[0] = 'x';
+    Require(FormatSecure(buffer, sizeof(buffer), "ab%n", &count) == -1 && buffer[0] == 0 && count == -1);
+    buffer[0] = 'x';
+    Require(FormatSecure(buffer, sizeof(buffer), "[%s]", static_cast<const char*>(nullptr)) == -1 && buffer[0] == 0);
+    buffer[0] = 'x';
+    Require(FormatSecure(buffer, sizeof(buffer), "[%ls]", static_cast<const char16_t*>(nullptr)) == -1 && buffer[0] == 0);
+    buffer[0] = 'x';
+    Require(FormatSecure(buffer, 0, "%d", 1) == -1 && buffer[0] == 'x');
+    Require(FormatSecure(buffer, SIZE_MAX, "%d", 1) == -1 && buffer[0] == 'x');
+    Require(FormatSecure(buffer, sizeof(buffer), nullptr) == -1 && buffer[0] == 0);
+    Require(FormatSecure(nullptr, sizeof(buffer), "%d", 1) == -1);
+    int number = 0;
+    char word[8] = {};
+    Require(ScanSecure("12 abc", "%d %s", &number, word, static_cast<unsigned int>(sizeof(word))) == 2);
+    Require(number == 12 && std::strcmp(word, "abc") == 0);
+    char small[4] = {'x', 'x', 'x', 'x'};
+    Require(ScanSecure("toolong", "%s", small, static_cast<unsigned int>(sizeof(small))) == 0 && small[0] == 0);
+    char letter[2] = {};
+    Require(ScanSecure("q", "%c", letter, 1u) == 1 && letter[0] == 'q');
+    Require(ScanSecure(nullptr, "%d", &number) == EOF && ScanSecure("1", nullptr) == EOF);
 }
 
 #ifdef _WIN32
@@ -123,6 +180,7 @@ __attribute__((noinline)) static void APS5_VABI RunChecks() {
     Require(libc_printf_nid_postfix("libc_printf: %s\n", "OK") == 16);
     Require(libc_printf_nid_postfix("%d %d %d %d %d %d %d\n", 1, 22, 333, 4444, 55555, 666666, 7777777) == 35);
     Require(PrintList("vprintf: %d\n", 42) == 12);
+    CheckBoundsChecked();
     std::puts("Formatting checks passed: 10000 iterations");
 }
 

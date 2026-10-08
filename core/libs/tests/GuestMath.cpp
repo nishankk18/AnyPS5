@@ -20,6 +20,8 @@ struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
 extern LibcFloatConstant _FNan_nid_postfix;
 short APS5_VABI _FDtest_nid_postfix(const float*);
+int APS5_VABI abs_nid_postfix(int);
+double APS5_VABI __powidf2_nid_postfix(double, int);
 float APS5_VABI fmodf_nid_postfix(float, float);
 float APS5_VABI asinf_nid_postfix(float);
 float APS5_VABI acosf_nid_postfix(float);
@@ -230,4 +232,18 @@ int main() {
     Require(negativeDenominator.quot == -3 && negativeDenominator.rem == 1);
     const auto minimum = div_nid_postfix(std::numeric_limits<int>::min(), 10);
     Require(minimum.quot == -214748364 && minimum.rem == -8);
+    Require(abs_nid_postfix(-5) == 5 && abs_nid_postfix(7) == 7 && abs_nid_postfix(0) == 0);
+    Require(abs_nid_postfix(std::numeric_limits<int>::max()) == std::numeric_limits<int>::max());
+    Require(abs_nid_postfix(-std::numeric_limits<int>::max()) == std::numeric_limits<int>::max());
+    Require(abs_nid_postfix(std::numeric_limits<int>::min()) == std::numeric_limits<int>::min());
+    Require(__powidf2_nid_postfix(2.0, 10) == 1024.0 && __powidf2_nid_postfix(2.0, -2) == 0.25);
+    Require(__powidf2_nid_postfix(-3.0, 3) == -27.0 && __powidf2_nid_postfix(5.0, 0) == 1.0);
+    Require(__powidf2_nid_postfix(std::numeric_limits<double>::quiet_NaN(), 0) == 1.0);
+    const double base = 1.1;
+    Require(__powidf2_nid_postfix(base, 3) == base * (base * base));
+    Require(__powidf2_nid_postfix(base, -3) == 1.0 / (base * (base * base)));
+    Require(__powidf2_nid_postfix(base, 5) == base * ((base * base) * (base * base)));
+    Require(std::isinf(__powidf2_nid_postfix(0.0, -1)) && __powidf2_nid_postfix(-0.0, -1) < 0);
+    Require(__powidf2_nid_postfix(2.0, std::numeric_limits<int>::min()) == 0.0);
+    Require(std::isinf(__powidf2_nid_postfix(2.0, std::numeric_limits<int>::max())));
 }
