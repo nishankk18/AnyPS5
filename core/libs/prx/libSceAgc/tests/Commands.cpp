@@ -34,6 +34,8 @@ extern "C" std::uint32_t* APS5_VABI sceAgcAcbPushMarker(CommandBuffer* buf, cons
 extern "C" std::uint32_t* APS5_VABI sceAgcAcbPopMarker(CommandBuffer* buf);
 extern "C" std::uint32_t* APS5_VABI sceAgcAcbSetMarker(CommandBuffer* buf, const char* str, std::uint32_t color);
 extern "C" std::uint32_t* APS5_VABI sceAgcDcbSetIndexBuffer(CommandBuffer* buf, std::uint64_t indexAddress);
+extern "C" std::uint32_t* APS5_VABI sceAgcDcbAcquireMem(CommandBuffer* buf, std::uint8_t engine, std::uint32_t cbDbOp, std::uint32_t gcrControl, const volatile void* base, std::uint64_t sizeBytes, std::uint32_t pollCycles);
+extern "C" int APS5_VABI sceAgcAcquireMemSetEngine(std::uint32_t* cmd, std::uint32_t engine);
 extern "C" std::uint32_t* APS5_VABI sceAgcDcbSetBaseIndirectArgs(CommandBuffer* buf, std::uint32_t shaderType, const volatile void* indirectBaseAddr);
 extern "C" std::uint32_t* APS5_VABI sceAgcSetNop(CommandBuffer* buf, std::uint32_t sizeDw);
 extern "C" int APS5_VABI sceAgcDebugRaiseException(std::uint32_t exceptionId);
@@ -510,6 +512,25 @@ void testDebugRaiseException() {
     check(result == 0, "debug exception did not return 0");
 }
 
+void testAcquireMemEngine() {
+    Storage storage;
+    auto* packet = sceAgcDcbAcquireMem(&storage.buffer, 0, 0x2a5u, 0x12345u, reinterpret_cast<const void*>(std::uintptr_t{0x10000}), 0x1000, 400);
+    auto expected = storage.words;
+    expected[1] |= 0x80000000u;
+    check(sceAgcAcquireMemSetEngine(packet, 1) == 0 && storage.words == expected, "acquire memory engine patch did not set the engine bit");
+    expected[1] &= 0x7fffffffu;
+    check(sceAgcAcquireMemSetEngine(packet, 0) == 0 && storage.words == expected, "acquire memory engine patch did not clear the engine bit");
+    check(packet[1] == 0x2a5u && packet[7] == 0x12345u, "acquire memory engine patch changed other fields");
+    expectFailure([&] { sceAgcAcquireMemSetEngine(packet, 2); });
+    expectFailure([&] { sceAgcAcquireMemSetEngine(nullptr, 1); });
+    auto* nop = Agc::Command::WriteNop(&storage.buffer, 8, __func__);
+    expectFailure([&] { sceAgcAcquireMemSetEngine(nop, 1); });
+    packet[0] = Agc::Command::Header(0x58u, 7);
+    expectFailure([&] { sceAgcAcquireMemSetEngine(packet, 1); });
+    packet[0] = Agc::Command::Header(0x58u, 8);
+    check(std::equal(expected.begin(), expected.begin() + 8, storage.words.begin()), "rejected acquire memory engine patch modified the packet");
+}
+
 void testDefaults() {
     std::uint32_t state = 0x12345678;
     check(sceAgcInit_0090(&state, 8) == 0 && state == 0x12345678, "AGC initialization failed or modified caller state");
@@ -555,6 +576,7 @@ int main(int argc, char** argv) {
         testRegisterRange();
         testPacketPayloadAddress();
         testMemory();
+        testAcquireMemEngine();
         testAtomicGds();
         testDebugRaiseException();
         testDefaults();
